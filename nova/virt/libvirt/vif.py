@@ -216,6 +216,13 @@ class LibvirtGenericVIFDriver(object):
 
     def get_config_ovs(self, instance, vif, image_meta,
                        inst_type, virt_type, host):
+        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
+            return self.get_config_vhostuser(instance, vif,
+                                             image_meta,
+                                             inst_type,
+                                             virt_type,
+                                             host)
+            
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             return self.get_config_ovs_hybrid(instance, vif,
                                               image_meta,
@@ -228,6 +235,20 @@ class LibvirtGenericVIFDriver(object):
                                               inst_type,
                                               virt_type,
                                               host)
+
+    def is_dpdk(self, vif):
+        bridge_name = self.get_bridge_name(vif).replace("-", "_")
+        is_dpdk = getattr(self, "is_%s_datapath_dpdk" % bridge_name, None)
+        if is_dpdk == None:
+            import json
+            bridge_info, _ = linux_net.ovs_get_bridge_details(
+                self.get_bridge_name(vif))
+            bridge_info = json.loads(bridge_info)
+            datapath_type = bridge_info['data'][0][4]
+            is_dpdk = datapath_type == "netdev"
+            setattr(self, "is_%s_datapath_dpdk" % bridge_name, is_dpdk)
+
+        return is_dpdk
 
     def get_config_ivs_hybrid(self, instance, vif, image_meta,
                               inst_type, virt_type, host):
@@ -513,6 +534,9 @@ class LibvirtGenericVIFDriver(object):
         self._plug_bridge_with_port(instance, vif, port='ovs')
 
     def plug_ovs(self, instance, vif):
+        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
+            self.plug_vhostuser(instance, vif)
+
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             self.plug_ovs_hybrid(instance, vif)
         else:
@@ -732,6 +756,9 @@ class LibvirtGenericVIFDriver(object):
                           instance=instance)
 
     def unplug_ovs(self, instance, vif):
+        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
+            self.unplug_vhostuser(instance, vif)
+
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             self.unplug_ovs_hybrid(instance, vif)
         else:

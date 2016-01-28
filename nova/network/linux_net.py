@@ -1385,6 +1385,9 @@ def ovs_set_vhostuser_port_type(dev):
     _ovs_vsctl(['--', 'set', 'Interface', dev, 'type=dpdkvhostuser'])
 
 
+def ovs_get_bridge_details(bridge):
+    return _ovs_vsctl(["--format=json", "find", "Bridge", "name=%s" % bridge])
+
 def create_ivs_vif_port(dev, iface_id, mac, instance_id):
     utils.execute('ivs-ctl', 'add-port',
                    dev, run_as_root=True)
