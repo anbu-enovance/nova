@@ -216,13 +216,6 @@ class LibvirtGenericVIFDriver(object):
 
     def get_config_ovs(self, instance, vif, image_meta,
                        inst_type, virt_type, host):
-        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
-            return self.get_config_vhostuser(instance, vif,
-                                             image_meta,
-                                             inst_type,
-                                             virt_type,
-                                             host)
-            
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             return self.get_config_ovs_hybrid(instance, vif,
                                               image_meta,
@@ -407,7 +400,7 @@ class LibvirtGenericVIFDriver(object):
 
         return conf
 
-    def get_config_vhostuser(self, instance, vif, image_meta,
+    def _get_config_vhostuser(self, instance, vif, image_meta,
                               inst_type, virt_type, host):
         conf = self.get_base_config(instance, vif, image_meta,
                                     inst_type, virt_type)
@@ -427,6 +420,18 @@ class LibvirtGenericVIFDriver(object):
             conf.vhost_queues = None
 
         return conf
+
+    def get_config_vhostuser(self, instance, vif, image_meta,
+                             inst_type, virt_type, host):
+        if self.is_dpdk(vif):
+            return self._get_config_vhostuser(instance, vif, image_meta,
+                                              inst_type, virt_type, host)
+        if vif.is_ovs_fallback_allowed():
+            return self.get_config_ovs(instance, vif,
+                                       image_meta,
+                                       inst_type,
+                                       virt_type,
+                                       host) 
 
     def get_config_ib_hostdev(self, instance, vif, image_meta,
                               inst_type, virt_type, host):
@@ -534,9 +539,6 @@ class LibvirtGenericVIFDriver(object):
         self._plug_bridge_with_port(instance, vif, port='ovs')
 
     def plug_ovs(self, instance, vif):
-        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
-            self.plug_vhostuser(instance, vif)
-
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             self.plug_ovs_hybrid(instance, vif)
         else:
@@ -651,17 +653,22 @@ class LibvirtGenericVIFDriver(object):
         linux_net._set_device_mtu(dev)
 
     def plug_vhostuser(self, instance, vif):
-        ovs_plug = vif['details'].get(
-                                network_model.VIF_DETAILS_VHOSTUSER_OVS_PLUG,
-                                False)
-        if ovs_plug:
-            iface_id = self.get_ovs_interfaceid(vif)
-            port_name = os.path.basename(
-                    vif['details'][network_model.VIF_DETAILS_VHOSTUSER_SOCKET])
-            linux_net.create_ovs_vif_port(self.get_bridge_name(vif),
-                                          port_name, iface_id, vif['address'],
-                                          instance.uuid)
-            linux_net.ovs_set_vhostuser_port_type(port_name)
+        if self.is_dpdk(vif):
+            ovs_plug = vif['details'].get(
+                                    network_model.VIF_DETAILS_VHOSTUSER_OVS_PLUG,
+                                    False)
+            if ovs_plug:
+                iface_id = self.get_ovs_interfaceid(vif)
+                port_name = os.path.basename(
+                        vif['details'][network_model.VIF_DETAILS_VHOSTUSER_SOCKET])
+                linux_net.create_ovs_vif_port(self.get_bridge_name(vif),
+                                              port_name, iface_id, vif['address'],
+                                              instance.uuid)
+                linux_net.ovs_set_vhostuser_port_type(port_name)
+                return
+
+        if vif.is_ovs_fallback_allowed():
+            self.plug_ovs(instance, vif)
 
     def plug_vrouter(self, instance, vif):
         """Plug into Contrail's network port
@@ -756,9 +763,6 @@ class LibvirtGenericVIFDriver(object):
                           instance=instance)
 
     def unplug_ovs(self, instance, vif):
-        if vif.is_ovs_vhostuser_preferred() and self.is_dpdk(vif):
-            self.unplug_vhostuser(instance, vif)
-
         if self.get_firewall_required(vif) or vif.is_hybrid_plug_enabled():
             self.unplug_ovs_hybrid(instance, vif)
         else:
@@ -872,14 +876,20 @@ class LibvirtGenericVIFDriver(object):
                           instance=instance)
 
     def unplug_vhostuser(self, instance, vif):
-        ovs_plug = vif['details'].get(
-                        network_model.VIF_DETAILS_VHOSTUSER_OVS_PLUG,
-                        False)
-        if ovs_plug:
-            port_name = os.path.basename(
-                    vif['details'][network_model.VIF_DETAILS_VHOSTUSER_SOCKET])
-            linux_net.delete_ovs_vif_port(self.get_bridge_name(vif),
-                                          port_name)
+
+        if self.is_dpdk(vif):
+            ovs_plug = vif['details'].get(
+                            network_model.VIF_DETAILS_VHOSTUSER_OVS_PLUG,
+                            False)
+            if ovs_plug:
+                port_name = os.path.basename(
+                        vif['details'][network_model.VIF_DETAILS_VHOSTUSER_SOCKET])
+                linux_net.delete_ovs_vif_port(self.get_bridge_name(vif),
+                                              port_name)
+            return
+
+        if vif.is_ovs_fallback_allowed():
+            unplug_ovs(instance, vif)
 
     def unplug_vrouter(self, instance, vif):
         """Unplug Contrail's network port

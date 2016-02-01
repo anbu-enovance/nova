@@ -51,7 +51,7 @@ VIF_TYPE_BINDING_FAILED = 'binding_failed'
 VIF_DETAILS_PORT_FILTER = 'port_filter'
 VIF_DETAILS_OVS_HYBRID_PLUG = 'ovs_hybrid_plug'
 VIF_DETAILS_PHYSICAL_NETWORK = 'physical_network'
-VIF_DETAILS_OVS_PREFER_VHOSTUSER = "ovs_prefer_vhostuser"
+VIF_DETAILS_OVS_FALLBACK_ALLOWED = "allow_fallback_ovs"
 
 # The following constant defines an SR-IOV related parameter in the
 # 'vif_details'. 'profileid' should be used for VIF_TYPE_802_QBH
@@ -415,8 +415,8 @@ class VIF(Model):
     def is_neutron_filtering_enabled(self):
         return self['details'].get(VIF_DETAILS_PORT_FILTER, False)
 
-    def is_ovs_vhostuser_preferred(self):
-        return self['details'].get(VIF_DETAILS_OVS_PREFER_VHOSTUSER, False)
+    def is_ovs_fallback_allowed(self):
+        return self['details'].get(VIF_DETAILS_OVS_FALLBACK_ALLOWED, False)
 
     def get_physical_network(self):
         phy_network = self['network']['meta'].get('physical_network')
